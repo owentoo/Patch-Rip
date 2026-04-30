@@ -1,0 +1,51 @@
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f6f6f7;color:#202223;}
+:root{
+    --green:#34a853;--red:#ea4335;--orange:#f5a623;--blue:#5c6ac4;
+    --purple:#9c6ade;--teal:#47c1bf;--bg:#f6f6f7;--card:#fff;
+    --border:#e1e3e5;--t1:#202223;--t2:#6d7175;--shopify:#008060;
+}
+
+/* Shared top chrome rendered by HeaderShell on /app and /app/proofs and
+   /app/orders/:id. The nav strip is itself a rounded white card sitting on
+   the gray page background, matching the rounded-block visual rhythm of
+   every other content card on the page. */
+.header{background:transparent;padding:16px 24px 0;}
+.header-inner{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  box-shadow:0 1px 0 rgba(0,0,0,0.03);
+  padding:14px 22px;
+}
+.header-top{display:flex;align-items:center;gap:14px;margin-bottom:12px;}
+.header-logo{width:36px;height:36px;border-radius:8px;flex-shrink:0;}
+.header-title{font-size:18px;font-weight:700;color:var(--t1);margin:0;line-height:1.2;}
+.header-sub{font-size:12px;color:var(--t2);line-height:1.2;}
+.header-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;}
+.user-label{font-size:12px;color:var(--t2);}
+.nav-row{display:flex;gap:4px;align-items:center;flex-wrap:wrap;}
+.nav-tab{padding:7px 14px;font-size:13px;font-weight:500;color:var(--t1);background:transparent;border:none;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none;line-height:1;}
+.nav-tab:hover{background:#f0f0f0;}
+.nav-tab.active{font-weight:600;color:var(--shopify);background:#e8f5e9;}
+.nav-tab .count{background:#ddd;color:var(--t2);font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;min-width:18px;text-align:center;}
+.nav-tab.active .count{background:var(--shopify);color:#fff;}
+.nav-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
+
+/* Body container — same horizontal gutters as the header card so cards
+   below visually line up with the nav strip. Tighter top padding now
+   that the rounded header already gives breathing room. */
+.content{padding:14px 24px 24px;}
+
+/* Tab visibility — each TabBody is always mounted (so polling effects keep
+   running) but only the active one is shown. */
+.tab-content{display:none;} .tab-content.active{display:block;}
+
+@media(max-width:768px){
+  .header{padding:12px 12px 0;}
+  .header-top{flex-wrap:wrap;}
+  .header-right{margin-left:0;}
+  .header-inner{padding:12px 14px;}
+  .content{padding:12px;}
+}

@@ -1,0 +1,56 @@
+{
+  "family": "patch-sensei-app",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::795462798032:role/patch-sensei-task-execution",
+  "taskRoleArn": "arn:aws:iam::795462798032:role/patch-sensei-task",
+  "containerDefinitions": [
+    {
+      "name": "web",
+      "image": "REPLACED_BY_GITHUB_ACTIONS",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 3000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PORT", "value": "3000" },
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "SCOPES", "value": "read_orders,write_orders,read_customers,read_products,write_products" },
+        { "name": "DEV_MODE", "value": "false" },
+        { "name": "LAMBDA_RANKER_NAME", "value": "PatchSensei-Ranker" },
+        { "name": "S3_MOCKUP_BUCKET", "value": "ninja-patchsensei-mockups" },
+        { "name": "DYNAMO_RANK_TABLE", "value": "PatchSensei-RankSessions" },
+        { "name": "SQS_QUEUE_URL", "value": "https://sqs.us-east-1.amazonaws.com/795462798032/PatchSenseiMockupQueue" },
+        { "name": "SQS_RANKUP_QUEUE_URL", "value": "https://sqs.us-east-1.amazonaws.com/795462798032/PatchSenseiRankMockupQueue" },
+        { "name": "STORAGE_BACKEND", "value": "s3" },
+        { "name": "S3_BUCKET", "value": "proofsensei-prod-files-9ab17adc" }
+      ],
+      "secrets": [
+        { "name": "SHOPIFY_API_KEY",      "valueFrom": "arn:aws:ssm:us-east-1:795462798032:parameter/patch-sensei/SHOPIFY_API_KEY" },
+        { "name": "SHOPIFY_API_SECRET",   "valueFrom": "arn:aws:ssm:us-east-1:795462798032:parameter/patch-sensei/SHOPIFY_API_SECRET" },
+        { "name": "SHOPIFY_APP_URL",      "valueFrom": "arn:aws:ssm:us-east-1:795462798032:parameter/patch-sensei/SHOPIFY_APP_URL" },
+        { "name": "NINJA_RANKER_SECRET",  "valueFrom": "arn:aws:ssm:us-east-1:795462798032:parameter/patch-sensei/NINJA_RANKER_SECRET" },
+        { "name": "DATABASE_URL",         "valueFrom": "arn:aws:secretsmanager:us-east-1:795462798032:secret:proofsensei-prod/database-url-oNKpSx" },
+        { "name": "PROOF_TOKEN_SECRET",   "valueFrom": "arn:aws:secretsmanager:us-east-1:795462798032:secret:proofsensei-prod/proof-token-secret-nauWpR" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/patch-sensei-app",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "web"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget -q -O- http://localhost:3000/ || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

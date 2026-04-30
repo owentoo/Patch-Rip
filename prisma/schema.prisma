@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Shopify session storage ──────────────────────────────────────────────
+// Schema dictated by @shopify/shopify-app-session-storage-prisma — do not modify.
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+// ─── Tenancy root ─────────────────────────────────────────────────────────
+
+model Shop {
+  id                String    @id @default(cuid())
+  shopifyDomain     String    @unique
+  name              String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  uninstalledAt     DateTime?
+
+  fromEmail         String?
+  brandColor        String?
+  fileSizeLimitMb   Int       @default(100)
+  orderTotalLimitMb Int       @default(1024)
+  approvedTagName   String    @default("proof approved")
+  revisionTagName   String    @default("revision needed")
+
+  staffMembers         StaffMember[]
+  orders               Order[]
+  proofTriggerProducts ProofTriggerProduct[]
+  emailTemplates       EmailTemplate[]
+  emailLogs            EmailLog[]
+  usageCounters        UsageCounter[]
+  billingPlan          BillingPlan?
+}
+
+model StaffMember {
+  id             String   @id @default(cuid())
+  shopId         String
+  shopifyStaffId String
+  name           String?
+  email          String?
+  isVendor       Boolean  @default(false)
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  shop            Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  uploadedFiles   ProofFile[]    @relation("UploadedBy")
+  createdVersions ProofVersion[] @relation("CreatedBy")
+  sentEmailLogs   EmailLog[]
+
+  @@unique([shopId, shopifyStaffId])
+  @@index([shopId])
+}
+
+// ─── Proof trigger products ───────────────────────────────────────────────
+
+enum ProofTriggerTier {
+  PAID
+  FREE
+}
+
+model ProofTriggerProduct {
+  id        String           @id @default(cuid())
+  shopId    String
+  productId String
+  tier      ProofTriggerTier
+  createdAt DateTime         @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, productId])
+  @@index([shopId])
+}
+
+// ─── Orders ───────────────────────────────────────────────────────────────
+
+model Order {
+  id                    String    @id @default(cuid())
+  shopId                String
+  shopifyOrderId        String
+  orderName             String
+  customerEmail         String?
+  customerName          String?
+  financialStatus       String?
+  fulfillmentStatus     String?
+  // Shopify totals + tags, denormalized for the dashboard list. Stored
+  // as strings (Shopify ships money as strings) and a comma-joined tag
+  // list to mirror Shopify's own format.
+  totalPrice            String?
+  currencyCode          String?
+  itemCount             Int?
+  tags                  String?
+  shopifyCreatedAt      DateTime
+  proofRequested        Boolean   @default(false)
+  proofPaid             Boolean   @default(false)
+  lastActivityByStaffId String?
+  // Per-order nonce for the customer review URL. The public token is
+  // signed against (orderId, signedCustomerToken). Rotating it revokes
+  // the URL.
+  signedCustomerToken   String?   @unique
+  customerReviewSentAt  DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  proofs    Proof[]
+  emailLogs EmailLog[]
+
+  @@unique([shopId, shopifyOrderId])
+  @@index([shopId])
+  @@index([shopId, proofRequested])
+}
+
+// ─── Proofs ───────────────────────────────────────────────────────────────
+
+enum ProofStatus {
+  AWAITING_PROOF
+  DRAFTED
+  SENT_TO_CUSTOMER
+  AWAITING_CUSTOMER
+  REVISIONS_REQUESTED
+  APPROVED
+  CANCELLED
+}
+
+model Proof {
+  id                   String      @id @default(cuid())
+  shopId               String
+  orderId              String
+  // Shopify line item GID (e.g., "gid://shopify/LineItem/123…")
+  lineItemId           String
+  // Denormalized so the order detail page works even if the Shopify
+  // line item disappears (e.g., merchant edits the order).
+  lineItemTitle        String
+  lineItemVariantTitle String?
+  lineItemQuantity     Int
+  status               ProofStatus @default(AWAITING_PROOF)
+  currentVersionId     String?     @unique
+  artworkUrl           String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  versions       ProofVersion[] @relation("ProofVersions")
+  currentVersion ProofVersion?  @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  @@unique([orderId, lineItemId])
+  @@index([shopId])
+  @@index([orderId])
+}
+
+model ProofVersion {
+  id               String    @id @default(cuid())
+  shopId           String
+  proofId          String
+  versionNumber    Int
+  createdByStaffId String
+  note             String?
+  sentToCustomerAt DateTime?
+  createdAt        DateTime  @default(now())
+
+  proof           Proof                 @relation("ProofVersions", fields: [proofId], references: [id], onDelete: Cascade)
+  proofIfCurrent  Proof?                @relation("CurrentVersion")
+  createdByStaff  StaffMember           @relation("CreatedBy", fields: [createdByStaffId], references: [id])
+  files           ProofFile[]
+  revisionRequest ProofRevisionRequest?
+
+  @@unique([proofId, versionNumber])
+  @@index([shopId])
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  ERROR
+}
+
+model ProofFile {
+  id                String     @id @default(cuid())
+  shopId            String
+  proofVersionId    String
+  s3Key             String
+  originalFilename  String
+  mimeType          String
+  sizeBytes         Int
+  previewS3Key      String?
+  scanStatus        ScanStatus @default(PENDING)
+  uploadedByStaffId String
+  createdAt         DateTime   @default(now())
+
+  proofVersion    ProofVersion @relation(fields: [proofVersionId], references: [id], onDelete: Cascade)
+  uploadedByStaff StaffMember  @relation("UploadedBy", fields: [uploadedByStaffId], references: [id])
+
+  @@index([shopId])
+  @@index([proofVersionId])
+}
+
+model ProofRevisionRequest {
+  id                  String   @id @default(cuid())
+  shopId              String
+  proofVersionId      String   @unique
+  customerComment     String
+  requestedAt         DateTime @default(now())
+  resolvedByVersionId String?
+
+  proofVersion ProofVersion @relation(fields: [proofVersionId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+}
+
+// ─── Email ────────────────────────────────────────────────────────────────
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  shopId    String
+  key       String
+  subject   String
+  bodyHtml  String
+  variables String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, key])
+  @@index([shopId])
+}
+
+model EmailLog {
+  id            String   @id @default(cuid())
+  shopId        String
+  orderId       String?
+  templateKey   String
+  toEmail       String
+  subject       String
+  sentAt        DateTime @default(now())
+  sesMessageId  String?
+  sentByStaffId String?
+
+  shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  order       Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  sentByStaff StaffMember? @relation(fields: [sentByStaffId], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([shopId, orderId])
+}
+
+// ─── Billing & metering ───────────────────────────────────────────────────
+
+model UsageCounter {
+  id          String   @id @default(cuid())
+  shopId      String
+  periodStart DateTime
+  proofsSent  Int      @default(0)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, periodStart])
+  @@index([shopId])
+}
+
+enum PlanTier {
+  FREE
+  BASIC
+  SCALE_UP
+  PRO
+  ENTERPRISE
+}
+
+model BillingPlan {
+  id          String    @id @default(cuid())
+  shopId      String    @unique
+  tier        PlanTier  @default(FREE)
+  trialEndsAt DateTime?
+  comp        Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
